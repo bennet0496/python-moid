@@ -272,7 +272,7 @@ def main():
         make_help()
 
     if "--version" in [opt[0] for opt in options] or "-v" in [opt[0] for opt in options]:
-        print("VMware MoID Python Script 0.1   [powered by pyVmomi (vmware)]\n"
+        print("VMware MoID Python Script 0.2   [powered by pyVmomi (vmware)]\n"
               "(c) Bennet Becker, 2017\n\n\n")
         exit(0)
 

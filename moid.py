@@ -59,36 +59,13 @@ def get_vm_info(virtual_machine):
     return name, pstate, moid, strpath, ip_address, version, tools_version, tools_version_status, guest
 
 
-def print_table(table):
-    lentable = []
-    # print(len(tablehead))
-    for i in range(0, len(table[0]), 1):
-        # print(i)
-        clens = [len(str(x[i])) for x in table]
-        clens.sort(reverse=True)
-        lentable.append(clens[0])
-
-    # print(lentable)
-    for vm in table:
-        for field in range(len(vm)):
-            if vm[0] == 'Name' and vm[1] == 'PowerState':
-                print(BOLD, end='', flush=True)
-
-            if field == len(vm) - 1:
-                print(str(vm[field]).ljust(lentable[field]))
-            else:
-                print(str(vm[field]).ljust(lentable[field]) + END + ' | ', end='', flush=True)
-
-        if vm[0] == 'Name' and vm[1] == 'PowerState':
-            print(END, end='', flush=True)
-            for field in range(len(vm)):
-                if field == len(vm) - 1:
-                    print('-' * lentable[field])
-                else:
-                    print('-' * lentable[field] + "-+-", end='', flush=True)
-
-
-def make_table(config):
+def make_host_summary(config, vms):
+    host_dict = {}
+    for vm in vms:
+        if vm.runtime.host not in host_dict.keys():
+            host_dict[vm.runtime.host] = {"poweredOn": 0, "suspended": 0, "poweredOff": 0}
+        host_dict[vm.runtime.host][vm.runtime.powerState] += 1
+    # print(host_dict)
     context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     context.verify_mode = ssl.CERT_NONE
     service_instance = connect.SmartConnect(host=config["host"],
@@ -99,16 +76,65 @@ def make_table(config):
 
     content = service_instance.RetrieveContent()
     container = content.rootFolder  # starting point to look into
-    view_type = [vim.VirtualMachine]  # object types to look for
+    view_type = [vim.HostSystem]  # object types to look for
     recursive = True  # whether we should look into it recursively
     container_view = content.viewManager.CreateContainerView(
         container, view_type, recursive)
 
     children = container_view.view
+
+    table_head = ('Host', 'PoweredOn', 'Suspended', 'PoweredOff', 'Sum')
+    table = [table_head]
+    for hostid, stats in host_dict.items():
+        try:
+            hostname = [host.name for host in children if host == hostid][0]
+        except IndexError:
+            hostname = hostid._moId
+
+        table.append((hostname, stats["poweredOn"], stats["suspended"], stats["poweredOff"],
+                      sum([stats["poweredOn"], stats["suspended"], stats["poweredOff"]])))
+
+    print_table(table)
+
+def print_table(table):
+    lentable = []
+    # print(len(tablehead))
+    for i in range(0, len(table[0]), 1):
+        # print(i)
+        clens = [len(str(x[i])) for x in table]
+        clens.sort(reverse=True)
+        lentable.append(clens[0])
+
+    # print(lentable)
+    counter = 0
+    for row in table:
+        for field in range(len(row)):
+            if counter == 0:
+                print(BOLD, end='', flush=True)
+
+            if field == len(row) - 1:
+                print(str(row[field]).ljust(lentable[field]))
+            else:
+                print(str(row[field]).ljust(lentable[field]) + END + ' | ', end='', flush=True)
+
+        if counter == 0:
+            print(END, end='', flush=True)
+            for field in range(len(row)):
+                if field == len(row) - 1:
+                    print('-' * lentable[field])
+                else:
+                    print('-' * lentable[field] + "-+-", end='', flush=True)
+        counter += 1
+
+
+def make_vm_overview(children):
+
     table_head = ('Name', 'PowerState', 'MoID', 'Path', 'IP', 'Version', 'ToolsVersion',
                   'ToolsVersionStatus', 'Guest OS')
     table = [table_head]
     for child in children:
+        # print(dir(child.summary))
+        #pprint.pprint(child.summary)
         table.append(get_vm_info(child))
 
     print_table(table)
@@ -191,7 +217,7 @@ VMware MoID Python Script
     exit(1)
 
 
-def connect_moid(moId, config):
+def connect_moid(moid, config):
     context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     context.verify_mode = ssl.CERT_NONE
     service_instance = connect.SmartConnect(host=config["host"],
@@ -211,8 +237,27 @@ def connect_moid(moId, config):
     session_manager = content.sessionManager
     session = session_manager.AcquireCloneTicket()
     link = "vmrc://clone:{ticket}@{host}:{port}/?moid={moId}".format(ticket=session, host=config["host"],
-                                                                     port=config["port"], moId=moId)
+                                                                     port=config["port"], moId=moid)
     subprocess.call(["vmplayer", link], universal_newlines=True)
+
+
+def get_vms(config):
+    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+    context.verify_mode = ssl.CERT_NONE
+    service_instance = connect.SmartConnect(host=config["host"],
+                                            user=config["user"],
+                                            pwd=config["pass"],
+                                            port=config["port"],
+                                            sslContext=context)
+
+    content = service_instance.RetrieveContent()
+    container = content.rootFolder  # starting point to look into
+    view_type = [vim.VirtualMachine]  # object types to look for
+    recursive = True  # whether we should look into it recursively
+    container_view = content.viewManager.CreateContainerView(
+        container, view_type, recursive)
+
+    return container_view.view
 
 
 def main():
@@ -272,7 +317,13 @@ SOFTWARE.""".format(BOLD, END))
         connect_moid(val, config)
 
     if len(options) == 0:
-        make_table(config)
+        vms = get_vms(config)
+
+        print(CYAN + BOLD + "Hostsystems" + END)
+        make_host_summary(config, vms)
+        print()
+        print(CYAN + BOLD + "Virtual Machines" + END)
+        make_vm_overview(vms)
 
 
 if __name__ == '__main__':

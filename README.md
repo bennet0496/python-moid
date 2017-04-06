@@ -11,7 +11,7 @@ VM2 with a very long name | poweredOff | vm-77777 | /user/subdir             | 1
 VM3                       | poweredOff | vm-54321 | /otheruser               | None           | vmx-10  | 9354         | guestToolsNeedUpgrade  | Microsoft Windows 7 (64 Bit)                
 ```
 ## Usage
-
+```
 moid.py [-c vm-moid] [-r] [-v] [-l] [-h]
 
     Called with out an argument will generate an overview table.
@@ -34,3 +34,4 @@ moid.py [-c vm-moid] [-r] [-v] [-l] [-h]
         - "port" which is the port
         - "user" which is your username to login
         - and "pass" which is your hashed password
+```

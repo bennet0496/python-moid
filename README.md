@@ -13,25 +13,19 @@ VM3                       | poweredOff | vm-54321 | /otheruser               | N
 ## Usage
 ```
 moid.py [-c vm-moid] [-r] [-v] [-l] [-h]
-
-    Called with out an argument will generate an overview table.
-    
-    Options:
-    --connect=vm-moid, -c vm-moid    Connect to VMRC console by VM MoId
-    
-    --reset, -r                      Reset the current configuration
-    
-    --version, -v                    Print version and exit
-    
-    --licence, -l                    Print Licence and exit
-    
-    --help, -h                       Print this help and exit
-    
-    Configuration:
-    the config is under ~/.pymoid/config. 
-    The configuration is in JSON with the options:
-        - "host" which is the hostname of the vCenter
-        - "port" which is the port
-        - "user" which is your username to login
-        - and "pass" which is your hashed password
 ```
+| Argument | Effect |
+|----------|--------|
+| |generate an overview table|
+|--connect=vm-moid, -c vm-moid|Connect to VMRC console by VM MoId|
+|--reset, -r|Reset the current configuration|
+|--version, -v|Print version and exit|
+|--licence, -l|Print Licence and exit|
+|--help, -h|Print this help and exit|
+    
+the config is under ~/.pymoid/config. 
+The configuration is in JSON with the options:
+    - "host" which is the hostname of the vCenter
+    - "port" which is the port
+    - "user" which is your username to login
+    - and "pass" which is your hashed password

@@ -23,9 +23,10 @@ moid.py [-c vm-moid] [-r] [-v] [-l] [-h]
 |--licence, -l|Print Licence and exit|
 |--help, -h|Print this help and exit|
     
-the config is under ~/.pymoid/config. 
+the config is under ~/.pymoid/config.
+
 The configuration is in JSON with the options:
-    - "host" which is the hostname of the vCenter
-    - "port" which is the port
-    - "user" which is your username to login
-    - and "pass" which is your hashed password
+ - "host" which is the hostname of the vCenter
+ - "port" which is the port
+ - "user" which is your username to login
+ - and "pass" which is your hashed password

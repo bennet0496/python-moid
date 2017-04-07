@@ -7,6 +7,8 @@ import os
 import ssl
 import subprocess
 import sys
+import shutil
+import OpenSSL
 
 try:
     from pyVim import connect
@@ -234,11 +236,24 @@ def connect_moid(moid, config):
         if key == 'VirtualCenter.FQDN':
             vcenter_fqdn = getattr(item, 'value')
 
+    vc_cert = ssl.get_server_certificate((config["host"], config["port"]))
+    vc_pem = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, vc_cert)
+    vc_fingerprint = vc_pem.digest('sha1')
+
     session_manager = content.sessionManager
     session = session_manager.AcquireCloneTicket()
+
     link = "vmrc://clone:{ticket}@{host}:{port}/?moid={moId}".format(ticket=session, host=config["host"],
                                                                      port=config["port"], moId=moid)
-    subprocess.call(["vmplayer", link], universal_newlines=True)
+    httplink = "http://{host}:{port}/console/?vmId={moid}&host={fqdn}&sessionTicket={ticket}&thumbprint={fp}".format(
+        ticket=session, host=config["host"], port=config["port"], moid=moid, fqdn=vcenter_fqdn, fp=vc_fingerprint)
+
+    if shutil.which("vmplayer") != None:
+        subprocess.call(["vmplayer", link], universal_newlines=True)
+    elif shutil.which("vmrc") != None:
+        subprocess.call(["vmrc", link], universal_newlines=True)
+    else:
+        subprocess.call(["xdg-open", httplink], universal_newlines=True)
 
 
 def get_vms(config):
@@ -272,7 +287,7 @@ def main():
         make_help()
 
     if "--version" in [opt[0] for opt in options] or "-v" in [opt[0] for opt in options]:
-        print("VMware MoID Python Script 0.2   [powered by pyVmomi (vmware)]\n"
+        print("VMware MoID Python Script 0.3   [powered by pyVmomi (vmware)]\n"
               "(c) Bennet Becker, 2017\n\n\n")
         exit(0)
 

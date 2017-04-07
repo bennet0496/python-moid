@@ -3,3 +3,6 @@ Version 0.1
 
 Version 0.2
   - Add Hostoverview
+
+Version 0.3
+  - check for vmplayer or vmrc exsistence, otherwise open weblink

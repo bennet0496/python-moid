@@ -4,10 +4,12 @@ import getopt
 import getpass
 import json
 import os
+import shutil
 import ssl
 import subprocess
 import sys
-import shutil
+import threading
+
 import OpenSSL
 
 try:
@@ -98,6 +100,7 @@ def make_host_summary(config, vms):
 
     print_table(table)
 
+
 def print_table(table):
     lentable = []
     # print(len(tablehead))
@@ -136,7 +139,7 @@ def make_vm_overview(children):
     table = [table_head]
     for child in children:
         # print(dir(child.summary))
-        #pprint.pprint(child.summary)
+        # pprint.pprint(child.summary)
         table.append(get_vm_info(child))
 
     print_table(table)
@@ -219,6 +222,21 @@ VMware MoID Python Script
     exit(1)
 
 
+class PrintTo(threading.Thread):
+    def __init__(self, stream, file):
+        threading.Thread.__init__(self)
+        self._stream = stream
+        self._file = file
+        pass
+
+    def run(self):
+        import re
+        pattern = re.compile("^$")
+        for line in self._stream:
+            if "Gtk-WARNING" not in str(line) and "Gtk-Message" not in str(line) and not pattern.match(line):
+                print(line, file=self._file)
+
+
 def connect_moid(moid, config):
     context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
     context.verify_mode = ssl.CERT_NONE
@@ -229,30 +247,47 @@ def connect_moid(moid, config):
                                             sslContext=context)
 
     content = service_instance.RetrieveContent()
-    vcenter_data = content.setting
-    vcenter_settings = vcenter_data.setting
-    for item in vcenter_settings:
-        key = getattr(item, 'key')
-        if key == 'VirtualCenter.FQDN':
-            vcenter_fqdn = getattr(item, 'value')
-
-    vc_cert = ssl.get_server_certificate((config["host"], config["port"]))
-    vc_pem = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, vc_cert)
-    vc_fingerprint = vc_pem.digest('sha1')
-
     session_manager = content.sessionManager
     session = session_manager.AcquireCloneTicket()
 
     link = "vmrc://clone:{ticket}@{host}:{port}/?moid={moId}".format(ticket=session, host=config["host"],
                                                                      port=config["port"], moId=moid)
-    httplink = "http://{host}:{port}/console/?vmId={moid}&host={fqdn}&sessionTicket={ticket}&thumbprint={fp}".format(
-        ticket=session, host=config["host"], port=config["port"], moid=moid, fqdn=vcenter_fqdn, fp=vc_fingerprint)
 
-    if shutil.which("vmplayer") != None:
-        subprocess.call(["vmplayer", link], universal_newlines=True)
-    elif shutil.which("vmrc") != None:
-        subprocess.call(["vmrc", link], universal_newlines=True)
+    if shutil.which("vmplayer") is not None:
+        print("calling {}".format(' '.join(["vmplayer", link])))
+        app = subprocess.Popen(["vmplayer", link], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               universal_newlines=True)
+        tstdout = PrintTo(app.stdout, sys.stdout)
+        tstderr = PrintTo(app.stderr, sys.stderr)
+        tstdout.start()
+        tstderr.start()
+    elif shutil.which("vmrc") is not None:
+        print("calling {}".format(' '.join(["vmrc", link])))
+        app = subprocess.Popen(["vmrc", link], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               universal_newlines=True)
+        tstdout = PrintTo(app.stdout, sys.stdout)
+        tstderr = PrintTo(app.stderr, sys.stderr)
+        tstdout.start()
+        tstderr.start()
     else:
+        vcenter_data = content.setting
+        vcenter_settings = vcenter_data.setting
+        for item in vcenter_settings:
+            key = getattr(item, 'key')
+            if key == 'VirtualCenter.FQDN':
+                vcenter_fqdn = getattr(item, 'value')
+
+        vc_cert = ssl.get_server_certificate((config["host"], config["port"]))
+        vc_pem = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, vc_cert)
+        vc_fingerprint = vc_pem.digest('sha1').decode()
+
+        vmname = [vm.name for vm in get_vms(config) if vm._moId == moid][0]
+        httplink = "https://{host}:9443/vsphere-client/webconsole.html?vmId={moid}&vmName={name}" \
+                   "&host={fqdn}:{port}&sessionTicket={ticket}&thumbprint={fp}".format(
+            ticket=session, host=config["host"], port=config["port"], moid=moid, fqdn=vcenter_fqdn,
+            fp=vc_fingerprint, name=vmname)
+
+        print("calling {}".format(' '.join(["xdg-open", httplink])))
         subprocess.call(["xdg-open", httplink], universal_newlines=True)
 
 

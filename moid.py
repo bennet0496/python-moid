@@ -17,9 +17,21 @@ try:
     from pyVmomi import vmodl
     from pyVmomi import vim
 except ImportError:
-    print("Couldn't import pyvmomi. Please install pyvmomi using your favorite Packagemanager")
-    print("  e.g. pip3 install pyvmomi")
+    print("Couldn't import pyvmomi. Please install pyvmomi using your favorite Packagemanager", file=sys.stderr)
+    print("  e.g. pip3 install pyvmomi", file=sys.stderr)
     exit(255)
+
+KEYRING_DISABLED = False
+try:
+    import keyring
+    import secretstorage
+    import dbus
+except ImportError:
+    print("Couldn't import keyring, secretstorage or dbus. "
+          "Please install keyring, secretstorage and dbus using your favorite Packagemanager", file=sys.stderr)
+    print("  e.g. pip3 install keyring secretstorage dbus-python", file=sys.stderr)
+    print("       you may also need to install libdbus-glib-1-dev using apt", file=sys.stderr)
+    KEYRING_DISABLED = True
 
 PURPLE = '\033[95m'
 CYAN = '\033[96m'
@@ -146,6 +158,7 @@ def make_vm_overview(children):
 
 
 def make_cfg():
+
     home = os.environ["HOME"]
     print("No config found. Creating new...\n")
     if not os.path.exists("{}/.pymoid".format(home)):
@@ -153,18 +166,33 @@ def make_cfg():
     config = {}
     user = getpass.getuser()
     config["host"] = input("vCenter Hostname [vcenter]: ")
-    config["port"] = input("vCenter Port [443]: ")
-    config["user"] = input("vCenter Username [{}]: ".format(user))
-    pwd = getpass.getpass("vCenter Password: ")
-    config["pass"] = (base64.b64encode(''.join(chr(ord(a) ^ 142) for a in pwd).encode())).decode()
     if config["host"] == "":
         config["host"] = "vcenter"
+    config["port"] = input("vCenter Port [443]: ")
+    config["user"] = input("vCenter Username [{}]: ".format(user))
+    if config["user"] == "":
+        config["user"] = user
+    inp = input("Do you want to the password to be stored in {u}C{r}onfig, "
+                "stored in the systems {u}K{r}eyring or {u}D{r}on't stored at all? [c/k/D] ".format(u=UNDERLINE, r=END))
+    if inp.lower() == "c":
+        pwd = getpass.getpass("vCenter Password for {}: ".format(config["user"]))
+        config["pass"] = (base64.b64encode(''.join(chr(ord(a) ^ 142) for a in pwd).encode())).decode()
+    elif inp.lower() == "k":
+        if not KEYRING_DISABLED:
+            pwd = getpass.getpass("vCenter Password for {}: ".format(config["user"]))
+            keyring.set_password("pymoid@{}".format(config["host"]), config["user"], pwd)
+            config["pass"] = "KEYRING"
+        else:
+            print("keyring not supported! falling back to ASK")
+            config["pass"] = "ASK"
+    else:
+        config["pass"] = "ASK"
+
     if config["port"] == "":
         config["port"] = 443
     else:
         config["port"] = int(config["port"])
-    if config["user"] == "":
-        config["user"] = user
+
     print("writing config...")
     open("{}/.pymoid/config".format(home), 'w+').writelines(
         [json.dumps(config, sort_keys=True, indent=4, separators=(',', ': ')), '\n'])
@@ -179,13 +207,23 @@ def make_cfg():
     print("you can reset the configuration by deleting '~/.pymoid'")
 
 
-def load_cfg():
+def load_cfg(no_promt=False):
     home = os.environ["HOME"]
     if not os.path.exists("{}/.pymoid/config".format(home)):
         make_cfg()
 
     config = json.loads(''.join(open("{}/.pymoid/config".format(home), 'r').readlines()))
-    config["pass"] = (''.join(chr(ord(a) ^ 142) for a in (base64.b64decode(config["pass"].encode())).decode()))
+    if config["pass"] == "KEYRING" and not KEYRING_DISABLED:
+        config["pass"] = keyring.get_password("pymoid@{}".format(config["host"]), config["user"])
+        if (config["pass"] == "" or config["pass"] is None) and not no_promt:
+            print("Password not found in keyring")
+            config["pass"] = getpass.getpass("vCenter Password for {}: ".format(config["user"]))
+            keyring.set_password("pymoid", config["user"], config["pass"])
+    elif (config["pass"] == "ASK" or (config["pass"] == "KEYRING" and KEYRING_DISABLED)) and not no_promt:
+        config["pass"] = getpass.getpass("vCenter Password for {}: ".format(config["user"]))
+    else:
+        config["pass"] = (''.join(chr(ord(a) ^ 142) for a in (base64.b64decode(config["pass"].encode())).decode()))
+
     config["port"] = int(config["port"])
 
     return config
@@ -353,11 +391,16 @@ SOFTWARE.""".format(BOLD, END))
     if "--reset" in [opt[0] for opt in options] or "-r" in [opt[0] for opt in options]:
         print("Resetting Config...")
         try:
+            keyring.delete_password("pymoid@{}".format(load_cfg(True)["host"]), load_cfg(True)["user"])
+        except:
+            pass
+        try:
             os.remove("{}/.pymoid/config".format(home))
             os.remove("{}/.pymoid/cert.pem".format(home))
             os.removedirs("{}/.pymoid".format(home))
         except:
             pass
+
         exit(0)
 
     config = load_cfg()

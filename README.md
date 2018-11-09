@@ -29,4 +29,13 @@ The configuration is in JSON with the options:
  - "host" which is the hostname of the vCenter
  - "port" which is the port
  - "user" which is your username to login
- - and "pass" which is your hashed password
+ - and "pass" which is either your encrypted password or `KEYRING` to search your password in the systems keyring
+
+ ### Dependencies
+ the script needs openSSL bindings for python and the VMware Library [pyvmomi](https://github.com/vmware/pyvmomi)
+ ```bash
+ pip install pyOpenSSL # or
+ apt install python3-openssl
+ pip install pyvmomi
+ ```
+
